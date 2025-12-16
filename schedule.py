@@ -570,6 +570,17 @@ def _set_query_params(**kwargs: str) -> None:
         st.experimental_set_query_params(**clean)
 
 
+def _set_pending_nav(year: int, month: int, sel_iso: str) -> None:  # ★
+    st.session_state["skip_calendar_callback_once"] = True  # ★
+    st.session_state["pending_nav"] = {"y": int(year), "m": int(month), "sel": str(sel_iso or "")}  # ★
+    _set_query_params(y=str(int(year)), m=str(int(month)), sel=str(sel_iso or ""))  # ★
+
+
+def _nav_to(year: int, month: int, sel_iso: str) -> None:  # ★
+    _set_pending_nav(year, month, sel_iso)  # ★
+    st.rerun()  # ★
+
+
 def _month_start_end(year: int, month: int) -> Tuple[str, str]:
     first = dt.date(year, month, 1)
     last = dt.date(year, month, calendar.monthrange(year, month)[1])
@@ -795,6 +806,8 @@ def _require_login() -> bool:
 
 def _logout() -> None:
     st.session_state["auth"] = {"logged_in": False, "user_id": None, "is_admin": False, "as_user_id": None}
+    st.session_state.pop("pending_nav", None)  # ★
+    st.session_state.pop("skip_calendar_callback_once", None)  # ★
     _set_query_params()
     st.rerun()
 
@@ -905,11 +918,9 @@ def dialog_search(user_id: str) -> None:
                 st.caption("이동할 날짜를 선택 후 [이동] 을 누르세요.")
                 jump = st.date_input("이동할 일자", value=_today())
                 if st.button("이동"):
-                    _set_query_params(y=str(jump.year), m=str(jump.month), sel=jump.isoformat())
-                    st.rerun()
+                    _nav_to(int(jump.year), int(jump.month), jump.isoformat())  # ★
     if st.button("닫기"):
         st.rerun()
-
 
 @st.dialog("설정", width="large")
 def dialog_settings(user_id: str, settings: Dict[str, Any]) -> None:
@@ -1171,8 +1182,7 @@ def main_app() -> None:
     with nav_l:
         if st.button("◀ 이전달", use_container_width=True):
             prev = (dt.date(y, m, 1) - dt.timedelta(days=1)).replace(day=1)
-            _set_query_params(y=str(prev.year), m=str(prev.month), sel=selected_date.isoformat() if selected_date else "")
-            st.rerun()
+            _nav_to(int(prev.year), int(prev.month), selected_date.isoformat() if selected_date else "")  # ★
     with nav_c:
         coly, colm, colgo = st.columns([1, 1, 1])
         with coly:
@@ -1181,14 +1191,12 @@ def main_app() -> None:
             mm = st.number_input("월", min_value=1, max_value=12, value=int(m), step=1)
         with colgo:
             if st.button("이동", use_container_width=True):
-                _set_query_params(y=str(int(yy)), m=str(int(mm)), sel=selected_date.isoformat() if selected_date else "")
-                st.rerun()
+                _nav_to(int(yy), int(mm), selected_date.isoformat() if selected_date else "")  # ★
     with nav_r:
         if st.button("다음달 ▶", use_container_width=True):
             last_day = calendar.monthrange(y, m)[1]
             nxt = (dt.date(y, m, last_day) + dt.timedelta(days=1)).replace(day=1)
-            _set_query_params(y=str(nxt.year), m=str(nxt.month), sel=selected_date.isoformat() if selected_date else "")
-            st.rerun()
+            _nav_to(int(nxt.year), int(nxt.month), selected_date.isoformat() if selected_date else "")  # ★
 
     if st_calendar is None:  # ★
         st.error("streamlit-calendar 패키지가 설치되지 않아 달력을 표시할 수 없습니다. (pip install streamlit-calendar)")  # ★
@@ -1272,11 +1280,15 @@ def main_app() -> None:
         cal_state = st_calendar(events=calendar_events, options=calendar_options, custom_css=custom_css, key=f"calendar_{y}_{m}_{int(settings['calendar_height'])}")  # ★
         current_sel_iso = selected_date.isoformat() if selected_date is not None else ""  # ★
         if isinstance(cal_state, dict):  # ★
-            cb = cal_state.get("callback")  # ★
+            if st.session_state.get("skip_calendar_callback_once"):  # ★
+                st.session_state["skip_calendar_callback_once"] = False  # ★
+            else:  # ★
+                cb = cal_state.get("callback")  # ★
 
-            if cb == "dateClick":  # ★
-                dc = (cal_state.get("dateClick", {}) or {})  # ★
-                clicked = dc.get("dateStr") or dc.get("date") or ""  # ★
+                if cb == "dateClick":  # ★
+                    dc = (cal_state.get("dateClick", {}) or {})  # ★
+                    clicked = dc.get("dateStr") or dc.get("date") or ""  # ★
+
                 d = _calendar_payload_to_date(clicked)  # ★
                 if d is not None:  # ★
                     sig = f"dateClick|{d.isoformat()}"  # ★
