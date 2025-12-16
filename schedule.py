@@ -572,6 +572,11 @@ def _set_query_params(**kwargs: str) -> None:
 
 def _set_pending_nav(year: int, month: int, sel_iso: str) -> None:  # ★
     st.session_state["skip_calendar_callback_once"] = True  # ★
+    st.session_state["nav_lock_until"] = dt.datetime.now().timestamp() + 1.5  # ★
+    st.session_state["cal_nonce"] = secrets.token_hex(4)  # ★
+    st.session_state["selected_date_iso"] = ""  # ★
+    st.session_state["view_y"] = int(year)  # ★
+    st.session_state["view_m"] = int(month)  # ★
     st.session_state["pending_nav"] = {"y": int(year), "m": int(month), "sel": str(sel_iso or "")}  # ★
     _set_query_params(y=str(int(year)), m=str(int(month)), sel=str(sel_iso or ""))  # ★
 
@@ -808,6 +813,8 @@ def _logout() -> None:
     st.session_state["auth"] = {"logged_in": False, "user_id": None, "is_admin": False, "as_user_id": None}
     st.session_state.pop("pending_nav", None)  # ★
     st.session_state.pop("skip_calendar_callback_once", None)  # ★
+    st.session_state.pop("view_y", None)  # ★
+    st.session_state.pop("view_m", None)  # ★
     _set_query_params()
     st.rerun()
 
@@ -921,6 +928,7 @@ def dialog_search(user_id: str) -> None:
                     _nav_to(int(jump.year), int(jump.month), jump.isoformat())  # ★
     if st.button("닫기"):
         st.rerun()
+
 
 @st.dialog("설정", width="large")
 def dialog_settings(user_id: str, settings: Dict[str, Any]) -> None:
@@ -1054,6 +1062,8 @@ def dialog_event_editor(
                     new_date_iso = date_obj.isoformat()  # ★
                     create_event(user_id, new_date_iso, title, content, leave_holiday, leave_annual, leave_half_val, leave_early, ot1, ot2, ot3)  # ★
                     st.session_state["selected_date_iso"] = new_date_iso  # ★
+                    st.session_state["view_y"] = int(date_obj.year)  # ★
+                    st.session_state["view_m"] = int(date_obj.month)  # ★
                     _set_query_params(y=str(date_obj.year), m=str(date_obj.month), sel=new_date_iso)  # ★
                 else:
                     update_event(int(event_row["id"]), user_id, title, content, leave_holiday, leave_annual, leave_half_val, leave_early, ot1, ot2, ot3)
@@ -1115,6 +1125,20 @@ def main_app() -> None:
     m = _safe_int(qp.get("m"), _today().month)
     sel = qp.get("sel", "")
 
+    if "view_y" not in st.session_state:  # ★
+        st.session_state["view_y"] = int(y)  # ★
+    if "view_m" not in st.session_state:  # ★
+        st.session_state["view_m"] = int(m)  # ★
+
+    pend = st.session_state.pop("pending_nav", None)  # ★
+    if isinstance(pend, dict):  # ★
+        st.session_state["view_y"] = _safe_int(pend.get("y"), int(st.session_state.get("view_y", y)))  # ★
+        st.session_state["view_m"] = _safe_int(pend.get("m"), int(st.session_state.get("view_m", m)))  # ★
+        sel = str(pend.get("sel") or "")  # ★
+
+    y = int(st.session_state.get("view_y", y))  # ★
+    m = int(st.session_state.get("view_m", m))  # ★
+
     if m < 1:
         m = 1
     if m > 12:
@@ -1124,9 +1148,11 @@ def main_app() -> None:
     if selected_date is None:  # ★
         ss_sel = st.session_state.get("selected_date_iso", "")  # ★
         if ss_sel:  # ★
-            selected_date = _parse_date(str(ss_sel))  # ★
-    if selected_date is not None and (selected_date.year != y or selected_date.month != m):
-        y, m = selected_date.year, selected_date.month
+            tmp_d = _parse_date(str(ss_sel))  # ★
+            if tmp_d is not None and (tmp_d.year == y and tmp_d.month == m):  # ★
+                selected_date = tmp_d  # ★
+    if selected_date is not None and (selected_date.year != y or selected_date.month != m):  # ★
+        selected_date = None  # ★
 
     today = _today()
 
@@ -1182,7 +1208,7 @@ def main_app() -> None:
     with nav_l:
         if st.button("◀ 이전달", use_container_width=True):
             prev = (dt.date(y, m, 1) - dt.timedelta(days=1)).replace(day=1)
-            _nav_to(int(prev.year), int(prev.month), selected_date.isoformat() if selected_date else "")  # ★
+            _nav_to(int(prev.year), int(prev.month), "")  # ★
     with nav_c:
         coly, colm, colgo = st.columns([1, 1, 1])
         with coly:
@@ -1191,12 +1217,12 @@ def main_app() -> None:
             mm = st.number_input("월", min_value=1, max_value=12, value=int(m), step=1)
         with colgo:
             if st.button("이동", use_container_width=True):
-                _nav_to(int(yy), int(mm), selected_date.isoformat() if selected_date else "")  # ★
+                _nav_to(int(yy), int(mm), "")  # ★
     with nav_r:
         if st.button("다음달 ▶", use_container_width=True):
             last_day = calendar.monthrange(y, m)[1]
             nxt = (dt.date(y, m, last_day) + dt.timedelta(days=1)).replace(day=1)
-            _nav_to(int(nxt.year), int(nxt.month), selected_date.isoformat() if selected_date else "")  # ★
+            _nav_to(int(nxt.year), int(nxt.month), "")  # ★
 
     if st_calendar is None:  # ★
         st.error("streamlit-calendar 패키지가 설치되지 않아 달력을 표시할 수 없습니다. (pip install streamlit-calendar)")  # ★
@@ -1277,40 +1303,50 @@ def main_app() -> None:
                     }  # ★
                 )  # ★
 
-        cal_state = st_calendar(events=calendar_events, options=calendar_options, custom_css=custom_css, key=f"calendar_{y}_{m}_{int(settings['calendar_height'])}")  # ★
+        cal_state = st_calendar(
+            events=calendar_events,
+            options=calendar_options,
+            custom_css=custom_css,
+            key=f"calendar_{y}_{m}_{int(settings['calendar_height'])}_{st.session_state.get('cal_nonce','0')}",
+        )  # ★
         current_sel_iso = selected_date.isoformat() if selected_date is not None else ""  # ★
         if isinstance(cal_state, dict):  # ★
             if st.session_state.get("skip_calendar_callback_once"):  # ★
                 st.session_state["skip_calendar_callback_once"] = False  # ★
+            elif dt.datetime.now().timestamp() < float(st.session_state.get("nav_lock_until", 0) or 0):  # ★
+                pass  # ★
             else:  # ★
                 cb = cal_state.get("callback")  # ★
 
                 if cb == "dateClick":  # ★
                     dc = (cal_state.get("dateClick", {}) or {})  # ★
                     clicked = dc.get("dateStr") or dc.get("date") or ""  # ★
+                    d = _calendar_payload_to_date(clicked)  # ★
+                    if d is not None:  # ★
+                        sig = f"dateClick|{d.isoformat()}"  # ★
+                        if st.session_state.get("last_calendar_action") != sig:  # ★
+                            st.session_state["last_calendar_action"] = sig  # ★
+                            st.session_state["selected_date_iso"] = d.isoformat()  # ★
+                            st.session_state["view_y"] = int(d.year)  # ★
+                            st.session_state["view_m"] = int(d.month)  # ★
+                            if d.isoformat() != current_sel_iso:  # ★
+                                _set_query_params(y=str(d.year), m=str(d.month), sel=d.isoformat())  # ★
+                                st.rerun()  # ★
 
-                d = _calendar_payload_to_date(clicked)  # ★
-                if d is not None:  # ★
-                    sig = f"dateClick|{d.isoformat()}"  # ★
-                    if st.session_state.get("last_calendar_action") != sig:  # ★
-                        st.session_state["last_calendar_action"] = sig  # ★
-                        st.session_state["selected_date_iso"] = d.isoformat()  # ★
-                        if d.isoformat() != current_sel_iso:  # ★
-                            _set_query_params(y=str(d.year), m=str(d.month), sel=d.isoformat())  # ★
-                            st.rerun()  # ★
-
-            if cb == "eventClick":  # ★
-                ev = (cal_state.get("eventClick", {}) or {}).get("event", {})  # ★
-                clicked2 = ev.get("startStr") or ev.get("start") or ""  # ★
-                d = _calendar_payload_to_date(clicked2)  # ★
-                if d is not None:  # ★
-                    sig = f"eventClick|{str(ev.get('id',''))}|{d.isoformat()}"  # ★
-                    if st.session_state.get("last_calendar_action") != sig:  # ★
-                        st.session_state["last_calendar_action"] = sig  # ★
-                        st.session_state["selected_date_iso"] = d.isoformat()  # ★
-                        if d.isoformat() != current_sel_iso:  # ★
-                            _set_query_params(y=str(d.year), m=str(d.month), sel=d.isoformat())  # ★
-                            st.rerun()  # ★
+                if cb == "eventClick":  # ★
+                    ev = (cal_state.get("eventClick", {}) or {}).get("event", {})  # ★
+                    clicked2 = ev.get("startStr") or ev.get("start") or ""  # ★
+                    d2 = _calendar_payload_to_date(clicked2)  # ★
+                    if d2 is not None:  # ★
+                        sig2 = f"eventClick|{str(ev.get('id',''))}|{d2.isoformat()}"  # ★
+                        if st.session_state.get("last_calendar_action") != sig2:  # ★
+                            st.session_state["last_calendar_action"] = sig2  # ★
+                            st.session_state["selected_date_iso"] = d2.isoformat()  # ★
+                            st.session_state["view_y"] = int(d2.year)  # ★
+                            st.session_state["view_m"] = int(d2.month)  # ★
+                            if d2.isoformat() != current_sel_iso:  # ★
+                                _set_query_params(y=str(d2.year), m=str(d2.month), sel=d2.isoformat())  # ★
+                                st.rerun()  # ★
 
     img_col1, img_col2 = st.columns([1, 4])
     with img_col1:
