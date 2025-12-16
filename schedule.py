@@ -1281,9 +1281,9 @@ def main_app() -> None:
         custom_css = (  # ★
             ".fc-day-sat .fc-daygrid-day-number { color: #3aa0ff; font-weight: 800; }"  # ★
             ".fc-day-sun .fc-daygrid-day-number { color: #ff5a5a; font-weight: 800; }"  # ★
-            ".fc-event { font-size: 11px; line-height: 1.2; color: #ffffff !important; }"  # ★
+            ".fc-event { font-size: 11px; line-height: 1.2; }"  # ★
             ".fc-daygrid-event, .fc-h-event { background: transparent !important; border: none !important; }"  # ★
-            ".fc-event .fc-event-main, .fc-event .fc-event-title { color: #ffffff !important; }"  # ★
+            ".fc-event .fc-event-main, .fc-event .fc-event-title { color: inherit !important; }"  # ★
             ".fc-event:focus, .fc-event:hover { box-shadow: none !important; }"  # ★
             + "".join(per_day_css)  # ★
         )  # ★
@@ -1493,3 +1493,4 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+
